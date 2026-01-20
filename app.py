@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, send_file
+from flask import Flask, request, render_template_string
 import numpy as np
 import pandas as pd
 import io
@@ -57,7 +57,6 @@ HTML_TEMPLATE = """
     <form method="post" enctype="multipart/form-data">
         <label>UPLOAD CSV FILE *</label>
         <input type="file" name="file" required />
-
         <small>First column: option names, remaining columns: numeric criteria values</small>
 
         <label>WEIGHTS *</label>
@@ -92,14 +91,6 @@ HTML_TEMPLATE = """
         {% endfor %}
         </tbody>
       </table>
-
-      <form method="post" action="/api/index?download=1">
-        <input type="hidden" name="weights" value="{{ weights }}">
-        <input type="hidden" name="impacts" value="{{ impacts }}">
-        <input type="hidden" name="email" value="{{ email }}">
-        <input type="hidden" name="from_screen" value="1">
-        <!-- User will need to re-upload file for download in this simple version -->
-      </form>
     {% endif %}
 
     <div class="example-box">
@@ -120,11 +111,8 @@ def run_topsis(df, weights, impacts):
     weights = np.array(weights, dtype=float)
     impacts = np.array(impacts)
 
-    # normalize
     norm = np.sqrt((data ** 2).sum(axis=0))
     norm_data = data / norm
-
-    # apply weights
     weighted = norm_data * weights
 
     ideal_best = np.zeros(weighted.shape[1])
@@ -171,7 +159,6 @@ def send_email_with_csv(to_email, csv_bytes, filename="topsis_result.csv"):
         return False, f"Email error: {e}"
 
 @app.route("/", methods=["GET", "POST"])
-@app.route("/api/index", methods=["GET", "POST"])
 def index():
     message = None
     error = False
@@ -189,6 +176,7 @@ def index():
         if not file or file.filename == "":
             message = "Please upload a CSV file."
             error = True
+            df = None
         else:
             try:
                 df = pd.read_csv(file)
@@ -210,7 +198,7 @@ def index():
                 message = "Weights and impacts must have the same length."
                 error = True
             elif df is not None and df.shape[1] - 1 != len(weights):
-                message = "Number of weights/impacts must match number of criteria columns."
+                message = "Number of weights/impacts must match criteria columns."
                 error = True
             elif any(i not in ['+', '-'] for i in impacts):
                 message = "Impacts must be + or - only."
@@ -219,7 +207,6 @@ def index():
         if not error and df is not None:
             try:
                 result_table = run_topsis(df, weights, impacts)
-                # create CSV in memory
                 buf = io.StringIO()
                 result_table.to_csv(buf, index=False)
                 csv_bytes = buf.getvalue().encode("utf-8")
