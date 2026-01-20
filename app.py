@@ -54,16 +54,17 @@ HTML_TEMPLATE = """
       <div class="msg {{ 'error' if error else 'success' }}">{{ message }}</div>
     {% endif %}
 
+    <!-- IMPORTANT: correct method + enctype, button is inside form -->
     <form method="post" enctype="multipart/form-data">
         <label>UPLOAD CSV FILE *</label>
-        <input type="file" name="file" required />
+        <input type="file" name="file" />
         <small>First column: option names, remaining columns: numeric criteria values</small>
 
         <label>WEIGHTS *</label>
-        <input type="text" name="weights" placeholder="e.g., 1,1,1,2" required />
+        <input type="text" name="weights" placeholder="e.g., 1,1,1,2" />
 
         <label>IMPACTS *</label>
-        <input type="text" name="impacts" placeholder="e.g., +,+,-,+" required />
+        <input type="text" name="impacts" placeholder="e.g., +,+,-,+" />
 
         <label>SEND RESULTS TO EMAIL (OPTIONAL)</label>
         <input type="email" name="email" placeholder="you@example.com" />
@@ -160,75 +161,20 @@ def send_email_with_csv(to_email, csv_bytes, filename="topsis_result.csv"):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
-    message = None
-    error = False
-    result_table = None
-    email = ""
-    weights_str = ""
-    impacts_str = ""
-
+    # DEBUG: first, just prove POST is received
     if request.method == "POST":
-        file = request.files.get("file")
-        weights_str = (request.form.get("weights") or "").strip()
-        impacts_str = (request.form.get("impacts") or "").strip()
-        email = (request.form.get("email") or "").strip()
+        # When this works, replace this block with full TOPSIS processing.
+        return "Got POST (form submitted). Next step: re‑enable TOPSIS logic.", 200
 
-        if not file or file.filename == "":
-            message = "Please upload a CSV file."
-            error = True
-            df = None
-        else:
-            try:
-                df = pd.read_csv(file, encoding="utf-8", engine="python")
-            except Exception:
-                message = "Could not read CSV file."
-                error = True
-                df = None
-
-        if not error:
-            try:
-                weights = [float(x) for x in weights_str.split(",")]
-                impacts = [x.strip() for x in impacts_str.split(",")]
-            except Exception:
-                message = "Invalid weights or impacts format."
-                error = True
-
-        if not error:
-            if len(weights) != len(impacts):
-                message = "Weights and impacts must have the same length."
-                error = True
-            elif df is not None and df.shape[1] - 1 != len(weights):
-                message = "Number of weights/impacts must match criteria columns."
-                error = True
-            elif any(i not in ['+', '-'] for i in impacts):
-                message = "Impacts must be + or - only."
-                error = True
-
-        if not error and df is not None:
-            try:
-                result_table = run_topsis(df, weights, impacts)
-                buf = io.StringIO()
-                result_table.to_csv(buf, index=False)
-                csv_bytes = buf.getvalue().encode("utf-8")
-
-                if email:
-                    ok, mail_msg = send_email_with_csv(email, csv_bytes)
-                    message = mail_msg
-                    error = not ok
-                else:
-                    message = "TOPSIS calculated successfully."
-            except Exception as e:
-                message = f"Error during TOPSIS calculation: {e}"
-                error = True
-
+    # For GET, just render the form
     return render_template_string(
         HTML_TEMPLATE,
-        message=message,
-        error=error,
-        result_table=result_table,
-        email=email,
-        weights=weights_str,
-        impacts=impacts_str,
+        message=None,
+        error=False,
+        result_table=None,
+        email="",
+        weights="",
+        impacts="",
     )
 
 if __name__ == "__main__":
