@@ -185,10 +185,11 @@ def index():
             df = None
         else:
             try:
-                # robust read_csv
+                # try a few options and SHOW the error
+                file.stream.seek(0)
                 df = pd.read_csv(file, encoding="utf-8", engine="python")
-            except Exception:
-                message = "Could not read CSV file."
+            except Exception as e:
+                message = f"CSV error: {e}"
                 error = True
                 df = None
 
