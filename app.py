@@ -185,9 +185,13 @@ def index():
             df = None
         else:
             try:
-                # try a few options and SHOW the error
-                file.stream.seek(0)
-                df = pd.read_csv(file, encoding="utf-8", engine="python")
+                # read raw bytes and recreate buffer for pandas
+                file_bytes = file.read()
+                if not file_bytes:
+                    raise ValueError("Uploaded file is empty.")
+                import io as _io
+                buffer = _io.BytesIO(file_bytes)
+                df = pd.read_csv(buffer, encoding="utf-8", engine="python")
             except Exception as e:
                 message = f"CSV error: {e}"
                 error = True
