@@ -179,7 +179,7 @@ def index():
             df = None
         else:
             try:
-                df = pd.read_csv(file)
+                df = pd.read_csv(file, encoding="utf-8", engine="python")
             except Exception:
                 message = "Could not read CSV file."
                 error = True
