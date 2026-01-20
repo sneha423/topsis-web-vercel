@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template_string, send_file
 import numpy as np
 import pandas as pd
 import io
@@ -7,6 +7,9 @@ import smtplib
 from email.message import EmailMessage
 
 app = Flask(__name__)
+
+# in‑memory buffer for last result
+LAST_RESULT_CSV = None
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -40,8 +43,8 @@ HTML_TEMPLATE = """
         }
         .download-link {
             display:inline-block; margin-top:10px; padding:8px 12px;
-            background:#fff; color:#000; text-decoration:none; font-weight:bold;
-            border:1px solid #fff;
+            background:#000; color:#fff; text-decoration:none; font-weight:bold;
+            border:1px solid #000;
         }
     </style>
 </head>
@@ -91,6 +94,8 @@ HTML_TEMPLATE = """
         {% endfor %}
         </tbody>
       </table>
+
+      <a href="/download" class="download-link">DOWNLOAD RESULT CSV</a>
     {% endif %}
 
     <div class="example-box">
@@ -98,8 +103,7 @@ HTML_TEMPLATE = """
         Model,Price,Storage,Camera,Battery<br/>
         P1,250,64,12,4000<br/>
         P2,200,32,8,3500<br/>
-        P3,300,128,16,4500<br/><br/>
-        <a href="/sample.csv" class="download-link">DOWNLOAD SAMPLE CSV</a>
+        P3,300,128,16,4500<br/>
     </div>
 </div>
 </body>
@@ -107,19 +111,14 @@ HTML_TEMPLATE = """
 """
 
 def run_topsis(df, weights, impacts):
-    # df: first column = names, remaining numeric
     data = df.iloc[:, 1:].astype(float).values
     weights = np.array(weights, dtype=float)
     impacts = np.array(impacts)
 
-    # normalization
     norm = np.sqrt((data ** 2).sum(axis=0))
     norm_data = data / norm
-
-    # apply weights
     weighted = norm_data * weights
 
-    # ideal best / worst
     ideal_best = np.zeros(weighted.shape[1])
     ideal_worst = np.zeros(weighted.shape[1])
     for i, impact in enumerate(impacts):
@@ -165,6 +164,8 @@ def send_email_with_csv(to_email, csv_bytes, filename="topsis_result.csv"):
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    global LAST_RESULT_CSV
+
     message = None
     error = False
     result_table = None
@@ -178,19 +179,16 @@ def index():
         impacts_str = (request.form.get("impacts") or "").strip()
         email = (request.form.get("email") or "").strip()
 
-        # basic validation
         if not file or file.filename == "":
             message = "Please upload a CSV file."
             error = True
             df = None
         else:
             try:
-                # read raw bytes and recreate buffer for pandas
                 file_bytes = file.read()
                 if not file_bytes:
                     raise ValueError("Uploaded file is empty.")
-                import io as _io
-                buffer = _io.BytesIO(file_bytes)
+                buffer = io.BytesIO(file_bytes)
                 df = pd.read_csv(buffer, encoding="utf-8", engine="python")
             except Exception as e:
                 message = f"CSV error: {e}"
@@ -225,6 +223,7 @@ def index():
                 buf = io.StringIO()
                 result_table.to_csv(buf, index=False)
                 csv_bytes = buf.getvalue().encode("utf-8")
+                LAST_RESULT_CSV = csv_bytes
 
                 if email:
                     ok, mail_msg = send_email_with_csv(email, csv_bytes)
@@ -244,6 +243,20 @@ def index():
         email=email,
         weights=weights_str,
         impacts=impacts_str,
+    )
+
+@app.route("/download")
+def download():
+    global LAST_RESULT_CSV
+    if not LAST_RESULT_CSV:
+        # nothing calculated yet
+        return "No result available to download.", 400
+
+    return send_file(
+        io.BytesIO(LAST_RESULT_CSV),
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="result.csv",
     )
 
 if __name__ == "__main__":
